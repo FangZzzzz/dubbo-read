@@ -445,7 +445,6 @@ public class ExtensionLoader<T> {
             if (cachedAdaptiveClass == null) {
                 throw new IllegalStateException("Adaptive Extension not existed(Extension " + type + ")!");
             }
-
             cachedAdaptiveClass = clazz;
             cachedAdaptiveInstance.set(null);
         }
@@ -814,12 +813,13 @@ public class ExtensionLoader<T> {
             } else {
                 int urlTypeIndex = -1;
                 for (int i = 0; i < pts.length; ++i) {
+                    // 寻找URI为参数的
                     if (pts[i].equals(URL.class)) {
                         urlTypeIndex = i;
                         break;
                     }
                 }
-                // found parameter in URL type
+                // 代表该方法上有URI为参数
                 if (urlTypeIndex != -1) {
                     // Null Point check
                     String s = String.format("\nif (arg%d == null) throw new IllegalArgumentException(\"url == null\");",
@@ -829,7 +829,7 @@ public class ExtensionLoader<T> {
                     s = String.format("\n%s url = arg%d;", URL.class.getName(), urlTypeIndex);
                     code.append(s);
                 }
-                // did not find parameter in URL type
+                // 代表该方法上没有为参数
                 else {
                     String attribMethod = null;
 

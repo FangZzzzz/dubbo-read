@@ -69,6 +69,7 @@ public class ZkclientZookeeperClient extends AbstractZookeeperClient<IZkChildLis
     @Override
     public void createEphemeral(String path) {
         try {
+            // 通过 Curator 框架创建节点
             client.createEphemeral(path);
         } catch (ZkNodeExistsException e) {
         }
