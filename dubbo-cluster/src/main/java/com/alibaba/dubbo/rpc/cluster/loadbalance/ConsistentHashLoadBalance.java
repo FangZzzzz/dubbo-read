@@ -44,8 +44,10 @@ public class ConsistentHashLoadBalance extends AbstractLoadBalance {
     protected <T> Invoker<T> doSelect(List<Invoker<T>> invokers, URL url, Invocation invocation) {
         String methodName = RpcUtils.getMethodName(invocation);
         String key = invokers.get(0).getUrl().getServiceKey() + "." + methodName;
+        // 获取 invokers 原始的 hashcode
         int identityHashCode = System.identityHashCode(invokers);
         ConsistentHashSelector<T> selector = (ConsistentHashSelector<T>) selectors.get(key);
+        // 如果 invokers 是一个新的 List 对象，意味着服务提供者数量发生了变化，可能新增也可能减少了。
         if (selector == null || selector.identityHashCode != identityHashCode) {
             selectors.put(key, new ConsistentHashSelector<T>(invokers, methodName, identityHashCode));
             selector = (ConsistentHashSelector<T>) selectors.get(key);
@@ -55,6 +57,7 @@ public class ConsistentHashLoadBalance extends AbstractLoadBalance {
 
     private static final class ConsistentHashSelector<T> {
 
+        // 使用 TreeMap 存储 Invoker 虚拟节点
         private final TreeMap<Long, Invoker<T>> virtualInvokers;
 
         private final int replicaNumber;
@@ -67,7 +70,9 @@ public class ConsistentHashLoadBalance extends AbstractLoadBalance {
             this.virtualInvokers = new TreeMap<Long, Invoker<T>>();
             this.identityHashCode = identityHashCode;
             URL url = invokers.get(0).getUrl();
+            // 获取虚拟节点数，默认为160
             this.replicaNumber = url.getMethodParameter(methodName, "hash.nodes", 160);
+            // 获取参与 hash 计算的参数下标值，默认对第一个参数进行 hash 运算
             String[] index = Constants.COMMA_SPLIT_PATTERN.split(url.getMethodParameter(methodName, "hash.arguments", "0"));
             argumentIndex = new int[index.length];
             for (int i = 0; i < index.length; i++) {
@@ -76,8 +81,10 @@ public class ConsistentHashLoadBalance extends AbstractLoadBalance {
             for (Invoker<T> invoker : invokers) {
                 String address = invoker.getUrl().getAddress();
                 for (int i = 0; i < replicaNumber / 4; i++) {
+                    // 对 address + i 进行 md5 运算，得到一个长度为16的字节数组
                     byte[] digest = md5(address + i);
                     for (int h = 0; h < 4; h++) {
+                        // 对 digest 部分字节进行4次 hash 运算，得到四个不同的 long 型正整数
                         long m = hash(digest, h);
                         virtualInvokers.put(m, invoker);
                     }
@@ -86,8 +93,11 @@ public class ConsistentHashLoadBalance extends AbstractLoadBalance {
         }
 
         public Invoker<T> select(Invocation invocation) {
+            // 将参数转为 key
             String key = toKey(invocation.getArguments());
+            // 对参数 key 进行 md5 运算
             byte[] digest = md5(key);
+            // 取 digest 数组的前四个字节进行 hash 运算，再将 hash 值传给 selectForKey 方法，
             return selectForKey(hash(digest, 0));
         }
 
@@ -102,6 +112,7 @@ public class ConsistentHashLoadBalance extends AbstractLoadBalance {
         }
 
         private Invoker<T> selectForKey(long hash) {
+            // 到 TreeMap 中查找第一个节点值大于或等于当前 hash 的 Invoker
             Map.Entry<Long, Invoker<T>> entry = virtualInvokers.tailMap(hash, true).firstEntry();
             if (entry == null) {
                 entry = virtualInvokers.firstEntry();
