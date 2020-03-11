@@ -85,9 +85,16 @@ public class RoundRobinLoadBalance extends AbstractLoadBalance {
         }
         return null;
     }
-    
+
+    // 如有A、B、C A权重为1，B权重为2，C权重为3
+    // 第一轮 A1 B2 C3 我们选中了C  然后c就变成了c-3
+    // 第二轮 A2 B4 C0 我们选中了B B就成B-2了
+    // 第三轮 A3 B0 C3 我们选中了A A就成A0了
+    // 第四轮 A1 B2 C6 我们选中了C C就成C3了
+    // ...这样类推
     @Override
     protected <T> Invoker<T> doSelect(List<Invoker<T>> invokers, URL url, Invocation invocation) {
+        // key = 全限定类名 + "." + 方法名，比如 com.xxx.DemoService.sayHello
         String key = invokers.get(0).getUrl().getServiceKey() + "." + invocation.getMethodName();
         ConcurrentMap<String, WeightedRoundRobin> map = methodWeightMap.get(key);
         if (map == null) {
@@ -100,31 +107,42 @@ public class RoundRobinLoadBalance extends AbstractLoadBalance {
         Invoker<T> selectedInvoker = null;
         WeightedRoundRobin selectedWRR = null;
         for (Invoker<T> invoker : invokers) {
+
             String identifyString = invoker.getUrl().toIdentityString();
+            // 判断当前invoker的weightedRoundRobin是否存在
             WeightedRoundRobin weightedRoundRobin = map.get(identifyString);
             int weight = getWeight(invoker, invocation);
             if (weight < 0) {
                 weight = 0;
             }
+            // 设置weightedRoundRobin
             if (weightedRoundRobin == null) {
                 weightedRoundRobin = new WeightedRoundRobin();
                 weightedRoundRobin.setWeight(weight);
                 map.putIfAbsent(identifyString, weightedRoundRobin);
                 weightedRoundRobin = map.get(identifyString);
             }
+            // 修改权重
             if (weight != weightedRoundRobin.getWeight()) {
                 //weight changed
                 weightedRoundRobin.setWeight(weight);
             }
+            // 让 current 字段加上自身权重，等价于 current += weight
             long cur = weightedRoundRobin.increaseCurrent();
+            // 设置 lastUpdate 字段，即 lastUpdate = now
             weightedRoundRobin.setLastUpdate(now);
+            // 记录最大的当前时间加权重
             if (cur > maxCurrent) {
                 maxCurrent = cur;
+                // 将具有最大 current 权重的 Invoker 赋值给 selectedInvoker
                 selectedInvoker = invoker;
+                // 将 Invoker 对应的 weightedRoundRobin 赋值给 selectedWRR，留作后用
                 selectedWRR = weightedRoundRobin;
             }
+            // 记录总权重
             totalWeight += weight;
         }
+        // 对 <identifyString, WeightedRoundRobin> 进行检查，过滤掉长时间未被更新的节点。
         if (!updateLock.get() && invokers.size() != map.size()) {
             if (updateLock.compareAndSet(false, true)) {
                 try {
