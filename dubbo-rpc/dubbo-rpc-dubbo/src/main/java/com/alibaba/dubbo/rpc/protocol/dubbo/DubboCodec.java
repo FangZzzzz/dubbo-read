@@ -59,9 +59,11 @@ public class DubboCodec extends ExchangeCodec implements Codec2 {
 
     @Override
     protected Object decodeBody(Channel channel, InputStream is, byte[] header) throws IOException {
+        // 获取消息头中的第三个字节，并通过逻辑与运算得到序列化器编号
         byte flag = header[2], proto = (byte) (flag & SERIALIZATION_MASK);
-        // get request id.
+        // 获取调用编号
         long id = Bytes.bytes2long(header, 4);
+        // 通过逻辑与运算得到调用类型，0 - Response，1 - Request
         if ((flag & FLAG_REQUEST) == 0) {
             // decode response.
             Response res = new Response(id);
@@ -106,21 +108,26 @@ public class DubboCodec extends ExchangeCodec implements Codec2 {
             }
             return res;
         } else {
-            // decode request.
+            // 创建 Request 对象
             Request req = new Request(id);
             req.setVersion(Version.getProtocolVersion());
+            // 通过逻辑与运算得到通信方式，并设置到 Request 对象中
             req.setTwoWay((flag & FLAG_TWOWAY) != 0);
+            // 通过位运算检测数据包是否为事件类型
             if ((flag & FLAG_EVENT) != 0) {
                 req.setEvent(Request.HEARTBEAT_EVENT);
             }
             try {
                 Object data;
                 if (req.isHeartbeat()) {
+                    // 对心跳包进行解码，该方法已被标注为废弃
                     data = decodeHeartbeatData(channel, CodecSupport.deserialize(channel.getUrl(), is, proto));
                 } else if (req.isEvent()) {
+                    // 对事件数据进行解码
                     data = decodeEventData(channel, CodecSupport.deserialize(channel.getUrl(), is, proto));
                 } else {
                     DecodeableRpcInvocation inv;
+                    // 根据 url 参数判断是否在 IO 线程上对消息体进行解码
                     if (channel.getUrl().getParameter(
                             Constants.DECODE_IN_IO_THREAD_KEY,
                             Constants.DEFAULT_DECODE_IN_IO_THREAD)) {
@@ -137,7 +144,8 @@ public class DubboCodec extends ExchangeCodec implements Codec2 {
                 if (log.isWarnEnabled()) {
                     log.warn("Decode request failed: " + t.getMessage(), t);
                 }
-                // bad request
+                // 若解码过程中出现异常，则将 broken 字段设为 true，
+                // 并将异常对象设置到 Reqeust 对象中
                 req.setBroken(true);
                 req.setData(t);
             }
